@@ -2,12 +2,14 @@ package demo1;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.LinkedBlockingDeque;
 
 import javax.print.attribute.standard.Severity;
 import javax.sql.rowset.serial.SerialArray;
@@ -23,8 +25,15 @@ public class SelectorThread implements Runnable{
 	//多路复用器
 	Selector selector = null;
 	
-	public SelectorThread() {
+	//每一个selector线程有一个队列
+	LinkedBlockingDeque<Channel> lbq = new LinkedBlockingDeque<>();
+	
+	SelectorThreadGroup stg;
+	
+
+	public SelectorThread(SelectorThreadGroup stg) {
 		try {
+			this.stg = stg;
 			
 			//epoll_create
 			selector = Selector.open();
@@ -76,6 +85,28 @@ public class SelectorThread implements Runnable{
 				}
 				
 				//第三步 处理task
+				
+				if (!lbq.isEmpty()) {
+					Channel c;
+					try {
+						c = lbq.take();
+						if (c instanceof ServerSocketChannel) {
+							ServerSocketChannel server = (ServerSocketChannel)c;
+							server.register(selector, SelectionKey.OP_ACCEPT);	
+									
+						}else if (c instanceof SocketChannel) {
+							SocketChannel client = (SocketChannel)c;
+							ByteBuffer buffer = ByteBuffer.allocateDirect(4096);
+							client.register(selector, SelectionKey.OP_READ, buffer);
+							
+						}
+						
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			
 				
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
@@ -129,6 +160,8 @@ public class SelectorThread implements Runnable{
 			client.configureBlocking(false);
 			
 			//register 到其他的 selector
+			
+			stg.choseSeletor(client);
 			
 			
 		} catch (IOException e) {

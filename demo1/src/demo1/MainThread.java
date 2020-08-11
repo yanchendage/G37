@@ -19,7 +19,7 @@ public class MainThread {
 		
 		
 		//第二步骤 把监听的server注册到某一个selector上，有可能监听多个接口
-		stg.bind(9999);
+		stg.bind(9090);
 	
 	}
 	
