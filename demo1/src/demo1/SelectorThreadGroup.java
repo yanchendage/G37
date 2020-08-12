@@ -6,7 +6,10 @@ import java.nio.channels.Channel;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import org.w3c.dom.ls.LSException;
 
 /**
  * 
@@ -15,25 +18,54 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class SelectorThreadGroup {
 	
-	//组里有那些成员？
+	//1boss 2worker
+	int type =1;
+	//1模式混杂模式 or 2boss&worker模式
+	int mode =1;
+	
+	//当前组内的成员
 	SelectorThread[] sts;
 	//serverSocket 接收链接的socket
 	ServerSocketChannel server = null;
 	//线程安全
-	AtomicInteger xid = new AtomicInteger(0);
+	AtomicInteger xid = new AtomicInteger(0);public SelectorThreadGroup() {
+		// TODO Auto-generated constructor stub
+	}
+	//当前组内的其他组
+	//如果为混杂模式当前的组既是boss又是worker
+	SelectorThreadGroup wg = this;
 	
+	/**
+	 * 设置worker组
+	 * @param stg
+	 */
+	public void setWorker(SelectorThreadGroup stg) {
+		this.wg = stg;
+	}
+	
+	public void setMode(int mode) {
+		this.mode = mode;
+		
+		if (mode == 1) {
+			
+		}
+		System.out.println("当前模式为：" + (mode ==1?"混杂":"boss worker" ));
+	}
 	
 	/**
 	 * 
 	 * @param i selector 线程数量
 	 */
-	public SelectorThreadGroup(int num) {
+	public SelectorThreadGroup(int num, int type) {
+		this.type = type;
 		
+		//System.out.println("SelectorThreadGroup线程：group [" +(mode ==1?"bose":"worker" ) + "]" + Thread.currentThread().getId() +"&"+Thread.currentThread().getName() );
 		
+		//new 了一个 selector线程数组
 		sts = new SelectorThread[num];
 		//new出num个selector线程
 		for (int i = 0; i < num; i++) {
-			sts[i] = new SelectorThread(this);
+			sts[i] = new SelectorThread(i, this);
 			//启动线程
 			new Thread(sts[i]).start();
 		}
@@ -46,18 +78,46 @@ public class SelectorThreadGroup {
 	//无论是serversocket 还是 socket都需要选择一个selector注册
 	//ServerSocketChannel 和 SocketChannel 都继承 Channel
 	
+	
+	/**
+	 * 混杂模式
+	 * @param c
+	 */
 	public void choseSeletor(Channel c) {
-		SelectorThread st = choseFunV1();
 		
-		//选择selector线程后，把当前的channel传进去
-		st.lbq.add(c);
-		//打断阻塞
-		st.selector.wakeup();
+		//混杂
+		if (mode == 1) {
+			
+			SelectorThread st = choseFunV1();
+			//选择selector线程后，把当前的channel传进去
+			st.lbq.add(c);
+			//打断阻塞
+			st.selector.wakeup();
+			System.out.println("SelectorThreadGroup线程: wakeup selector id ["+st.id+"]");
+			
+		}else if (mode == 2) {
+			
+			if (c instanceof ServerSocketChannel) {
+				SelectorThread st = choseFunV1();
+				
+				//选择selector线程后，把当前的channel传进去
+				st.lbq.add(c);
+				//打断阻塞
+				st.selector.wakeup();
+				
+				System.out.println("SelectorThreadGroup线程【boss组】: wakeup selector id ["+st.id+"]");
+			}else if (c instanceof SocketChannel) {
+				SelectorThread st = choseFunV2();
+				st.lbq.add(c);
+				//打断阻塞
+				st.selector.wakeup();
+				System.out.println("SelectorThreadGroup线程【worker组】: wakeup selector id ["+st.id+"]");
+			}
+			
+		}
 		
 		
-		
-		
-		
+
 		
 		//重点 
 //		ServerSocketChannel s = (ServerSocketChannel)c;
@@ -78,23 +138,36 @@ public class SelectorThreadGroup {
 //		} catch (ClosedChannelException e) {
 //			// TODO Auto-generated catch block
 //			e.printStackTrace();
-//		}
-		
-		
+//		}	
 	}
-
 	
+
+	/**
+	 * 混杂模式
+	 * @return
+	 */
 	public SelectorThread choseFunV1() {
 		int index = xid.incrementAndGet() % sts.length;
+		
+		System.out.println("SelectorThreadGroup线程: 选择的selector id :	[" + index + "]");
 		return sts[index];
 	}
-	public void choseFunV2() {
+	
+	/**
+	 * boss worker模式
+	 */
+	public SelectorThread choseFunV2() {
+		int index = xid.incrementAndGet() % wg.sts.length;
 		
+		System.out.println("SelectorThreadGroup线程: 选择的selector id :	[" + index + "]");
+		return wg.sts[index];
 	}
 	
 	public void bind(int port) {
 		
 		try {
+			System.out.println("SelectorThreadGroup线程 建立server socket（文件描述符）并绑定到"+port+"端口");
+			
 			server = ServerSocketChannel.open();
 			server.configureBlocking(false);
 			server.bind(new InetSocketAddress(port));

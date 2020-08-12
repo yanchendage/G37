@@ -12,14 +12,20 @@ public class MainThread {
 		
 		//管理selector线程组的工作交给了SelectorThreadGroup类
 		
+		System.out.println("mainThread线程："+ Thread.currentThread().getId() + "&" + Thread.currentThread().getName());
+//		SelectorThreadGroup stg = new SelectorThreadGroup(3);
+//				
+//		//第二步骤 把监听的server注册到某一个selector上，有可能监听多个接口
+//		stg.bind(9092);
+//		
 		
-		SelectorThreadGroup stg = new SelectorThreadGroup(1);
-		
-	
-		
-		
-		//第二步骤 把监听的server注册到某一个selector上，有可能监听多个接口
-		stg.bind(9090);
+		SelectorThreadGroup boss = new SelectorThreadGroup(3,1);
+		boss.setMode(2);//boss worker 模式
+		boss.setWorker(new SelectorThreadGroup(3,2));
+//		
+		boss.bind(9093);
+		boss.bind(9094);
+		boss.bind(9095);		
 	
 	}
 	

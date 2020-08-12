@@ -24,16 +24,24 @@ public class SelectorThread implements Runnable{
 	
 	//多路复用器
 	Selector selector = null;
+	//
+	int id;
 	
 	//每一个selector线程有一个队列
 	LinkedBlockingDeque<Channel> lbq = new LinkedBlockingDeque<>();
 	
 	SelectorThreadGroup stg;
-	
+//	
+//	
+//	public void setWorker(SelectorThreadGroup stg) {
+//		this.stg = stg;
+//	}
 
-	public SelectorThread(SelectorThreadGroup stg) {
+	public SelectorThread(int stid,SelectorThreadGroup stg) {
 		try {
 			this.stg = stg;
+			this.id = stid;
+			
 			
 			//epoll_create
 			selector = Selector.open();
@@ -44,6 +52,7 @@ public class SelectorThread implements Runnable{
 	}
 
 	public void run() {
+		//System.out.println("SelectorThread线程：selector id "+ id + "&线程id" + Thread.currentThread().getId() + "&线程名" + Thread.currentThread().getName());
 		// TODO Auto-generated method stub
 		while(true) {
 			try {
@@ -51,9 +60,10 @@ public class SelectorThread implements Runnable{
 				//相当于调用了多路复用器
 				//select 
 				//epoll -> epoll_wait
-				System.out.println("before select....");
+				
+				System.out.println("SelectorThread线程：group [" + (stg.type ==1?"bose":"worker" ) +"] & selector id ["+ id + "] & 线程id [" + Thread.currentThread().getId() + "] & 线程名 [" + Thread.currentThread().getName()+"] select 阻塞");
 				int nums = selector.select();//阻塞 需要后面 wakeup
-				System.out.println("after select....");
+				System.out.println("SelectorThread线程：group [" + (stg.type ==1?"bose":"worker" ) +"] & selector id ["+ id + "] & 线程id [" + Thread.currentThread().getId() + "] & 线程名 [" + Thread.currentThread().getName()+"] select 停止阻塞");
 				//第二步selectedKeys
 				if (nums > 0) {
 					//得到所有文件描述符
@@ -66,14 +76,12 @@ public class SelectorThread implements Runnable{
 						iter.remove();
 						
 						if (key.isAcceptable()) { //复杂、接受客户端的过程（接收后要注册，多线程下，新的客户端注册到哪里呢？）
-							
+							System.out.println("SelectorThread线程：group [" + (stg.type ==1?"bose":"worker" ) +"] & selector id ["+ id + "] & 线程id [" + Thread.currentThread().getId() + "] & 线程名 [" + Thread.currentThread().getName()+"] 有链接进来了");
 							acceptHandler(key);
 							
-							
 						}else if (key.isReadable()) {
-							key.cancel();
+							System.out.println("SelectorThread线程：group [" + (stg.type ==1?"bose":"worker" ) +"] & selector id ["+ id + "] & 线程id [" + Thread.currentThread().getId() + "] & 线程名 [" + Thread.currentThread().getName()+"] 有消息进来了");
 							readHandler(key);
-							
 						}else if (key.isWritable()) {
 							
 						}		
@@ -85,18 +93,21 @@ public class SelectorThread implements Runnable{
 				}
 				
 				//第三步 处理task
-				
+				//System.out.println("SelectorThread线程：selector id ["+ id + "] & 线程id [" + Thread.currentThread().getId() + "] & 线程名 [" + Thread.currentThread().getName()+"] 被唤醒执行task");
 				if (!lbq.isEmpty()) {
 					Channel c;
 					try {
 						c = lbq.take();
 						if (c instanceof ServerSocketChannel) {
 							ServerSocketChannel server = (ServerSocketChannel)c;
-							server.register(selector, SelectionKey.OP_ACCEPT);	
+						
+							System.out.println("server socket（文件描述符） 注册到 group[ "+(stg.type ==1?"bose":"worker" ) + "] & selector id ["+ id + "] & 线程id [" + Thread.currentThread().getId() + "] & 线程名 [" + Thread.currentThread().getName()+"] ");
+							server.register(selector, SelectionKey.OP_ACCEPT);		
 									
 						}else if (c instanceof SocketChannel) {
 							SocketChannel client = (SocketChannel)c;
 							ByteBuffer buffer = ByteBuffer.allocateDirect(4096);
+							System.out.println("server socket（文件描述符） 注册到 group[ "+(stg.type ==1?"bose":"worker" ) + "] & selector id ["+ id + "] & 线程id [" + Thread.currentThread().getId() + "] & 线程名 [" + Thread.currentThread().getName()+"] ");
 							client.register(selector, SelectionKey.OP_READ, buffer);
 							
 						}
@@ -121,7 +132,6 @@ public class SelectorThread implements Runnable{
 		//建立channel
 		SocketChannel client = (SocketChannel)key.channel();
 		
-		System.out.println(key);
 		buffer.clear();
 		while (true) {
 			try {
@@ -160,10 +170,7 @@ public class SelectorThread implements Runnable{
 			client.configureBlocking(false);
 			
 			//register 到其他的 selector
-			
 			stg.choseSeletor(client);
-			
-			
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
